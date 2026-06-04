@@ -22,7 +22,6 @@ namespace {
 		return status;
 	}
 
-	
 
 }
 
@@ -144,7 +143,7 @@ void SerialUART::TxCompleteCallback(UART_HandleTypeDef *huart) {
 				self->need_free_ = false;
 				delete[] self->huart_->pTxBuffPtr;
 			}
-		}, this, true);
+		}, this);
 
 		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 		xSemaphoreGiveFromISR(tx_binary_, &xHigherPriorityTaskWoken);

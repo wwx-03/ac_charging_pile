@@ -97,8 +97,8 @@ void Lar01Network::Start() {
 	}, nullptr, 256, this, tskIDLE_PRIORITY + 1, nullptr);
 }
 
-void Lar01Network::OnMessageReceived(const uint8_t *data, size_t length) {
-	RxQueueItem item{data, length};
+void Lar01Network::EnqueueMessage(const uint8_t *data, uint16_t size) {
+	RxQueueItem item{data, size};
 	if (xQueueSendFromISR(rx_queue_, &item, nullptr) != pdTRUE) {
 		LOGE("Lar01Network: failed to enqueue received message");
 	}
@@ -242,6 +242,8 @@ void Lar01Network::DispatchData(const uint8_t *data, size_t length) {
 		if (xQueueSend(tx_queue_, &item, portMAX_DELAY) != pdTRUE) {
 			LOGE("Lar01Network: failed to enqueue device ready event");
 		}
+	} else if ((start = strstr(string, "+QIOPEN:")) != nullptr) {
+		DispatchQiopenData(data, length, string, start);
 	} else if ((start = strstr(string, "+QIURC:")) != nullptr) {
 		DispatchQiurcData(data, length, string, start);
 	} else if ((start = strstr(string, "*ICCID:")) != nullptr) {
@@ -299,7 +301,7 @@ void Lar01Network::DispatchIccidData(const uint8_t *data, size_t length, const c
 		return;
 	}
 	SimGettedEventData event_data{sim, static_cast<size_t>(size)};
-	auto &[callback, args] = event_handler_;
+	auto &[callback, args] = sim_getted_cb_;
 	callback(args, SIM_GETTED, &event_data);
 
 	if (task_to_notify_ && strstr(string, expected_) != nullptr) {
@@ -389,6 +391,20 @@ void Lar01Network::DispatchClkData(const uint8_t *data, size_t length, const cha
 	}
 }
 
+void Lar01Network::DispatchQiopenData(const uint8_t *data, size_t length, const char *string, const char *start) {
+	// +QIOPEN: <connectID>,<errcode>  (errcode=0 表示成功)
+	int fd{}, errcode{};
+	int parse_num = sscanf(start, "+QIOPEN: %d,%d", &fd, &errcode);
+	if (parse_num != 2) {
+		return;
+	}
+	// SendATCommand 等待该字符串来触发通知
+	if (task_to_notify_ && strstr(string, expected_) != nullptr) {
+		uint32_t bits = (errcode == 0) ? AT_COMMAND_OK : AT_COMMAND_ERROR;
+		xTaskNotify(task_to_notify_, bits, eSetBits);
+	}
+}
+
 bool Lar01Network::Connect() {
 	RETURN_ON_ERROR(SendATCommand("AT\r\n", "OK", 5, 3000));
 	SendATCommand("ATE0\r\n", "OK", 3, 1000);
@@ -398,7 +414,64 @@ bool Lar01Network::Connect() {
 	RETURN_ON_ERROR(SendATCommand("AT+CCLK?\r\n", "+CCLK:", 3, 10000));
 	RETURN_ON_ERROR(SendATCommand("AT+QICSGP=1,1,\"CMNET\",\"\",\"\",1\r\n", "OK", 3, 5000));
 	RETURN_ON_ERROR(SendATCommand("AT+QIACT=1\r\n", "OK", 3, 10000));
-	// char ops_ip[16]{}, mon_ip[16]{};
-	// auto &board = Board::GetInstance();
+
+	// 建立双路 TCP 连接
+	if (!ConnectOne(0, ops_ip_, ops_port_)) {
+		LOGE("Lar01Network: failed to connect ops platform (%s:%d)", ops_ip_, ops_port_);
+		return false;
+	}
+
+	if (!ConnectOne(1, mon_ip_, mon_port_)) {
+		LOGE("Lar01Network: failed to connect mon platform (%s:%d)", mon_ip_, mon_port_);
+		return false;
+	}
+
 	return true;
+}
+
+bool Lar01Network::ConnectOne(int fd, const char *ip, uint16_t port) {
+	if (!ip || ip[0] == '\0' || port == 0) {
+		LOGW("Lar01Network: skip ConnectOne fd=%d, address not configured", fd);
+		return true;  // 未配置则跳过，不当作错误
+	}
+
+	// AT+QIOPEN=<ctx_id>,<connectID>,"TCP","<ip>",<port>
+	// 响应: +QIOPEN: <connectID>,0 表示成功
+	const int cmd_len = snprintf(nullptr, 0,
+		"AT+QIOPEN=1,%d,\"TCP\",\"%s\",%d\r\n", fd, ip, port);
+	if (cmd_len <= 0) {
+		return false;
+	}
+
+	char *cmd = new char[cmd_len + 1];
+	if (!cmd) {
+		return false;
+	}
+	snprintf(cmd, cmd_len + 1, "AT+QIOPEN=1,%d,\"TCP\",\"%s\",%d\r\n", fd, ip, port);
+
+	char expected[24];
+	snprintf(expected, sizeof(expected), "+QIOPEN: %d,0", fd);
+
+	bool ok = SendATCommand(cmd, expected, 3, 30000, true);
+	delete[] cmd;
+
+	if (ok) {
+		LOGI("Lar01Network: fd=%d connected to %s:%d", fd, ip, port);
+		ConnectedEventData event_data{fd};
+		auto &[cb, args] = event_handler_;
+		cb(args, CONNECTED, &event_data);
+	}
+	return ok;
+}
+
+void Lar01Network::SetOpsAddress(const char *ip, uint16_t port) {
+	strncpy(ops_ip_, ip, sizeof(ops_ip_) - 1);
+	ops_ip_[sizeof(ops_ip_) - 1] = '\0';
+	ops_port_ = port;
+}
+
+void Lar01Network::SetMonAddress(const char *ip, uint16_t port) {
+	strncpy(mon_ip_, ip, sizeof(mon_ip_) - 1);
+	mon_ip_[sizeof(mon_ip_) - 1] = '\0';
+	mon_port_ = port;
 }

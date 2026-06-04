@@ -14,7 +14,9 @@ public:
 	}
 
 	void Start();
-	void Schedule(custom::function<void(void *)> callback, void *args, bool from_isr = false);
+	
+	// 在主事件循环中调度一个回调（线程/ISR 安全）
+	void Schedule(custom::function<void(void *)> callback, void *args = nullptr);
 
 private:
 
