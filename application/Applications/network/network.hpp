@@ -6,8 +6,6 @@
 #include <algorithm>
 #include <functional/functional>
 
-#include "network/tcp.hpp"
-
 class Network {
 public:
 	virtual ~Network() = default;

@@ -9,7 +9,15 @@
 #include <log/log>
 #include <time/time>
 
+struct QueueItem {
+	bool outside;
+	uint8_t event;
+};
+
 static constexpr size_t EVENT_QUEUE_DEPTH = 8;
+
+static constexpr size_t CHARGING_CHECK_INTERVAL_MS = 1000;      // 充电检查间隔
+static constexpr size_t LOWCURRENT_TIMEOUT_MS = 30 * 60 * 1000; // 30分钟低电流超时
 
 AcCharger::AcCharger(size_t channel, Relay *relay, PwmController *pwm, CpDetector *cp, Meter *meter, Storage *storage)
 		: channel_(channel)
@@ -18,16 +26,39 @@ AcCharger::AcCharger(size_t channel, Relay *relay, PwmController *pwm, CpDetecto
 		, cp_(cp)
 		, meter_(meter) 
 		, billing_(channel, this, meter, storage) {
-	event_queue_ = xQueueCreate(EVENT_QUEUE_DEPTH, sizeof(Event));
+	// 参数检查
+	configASSERT(relay_);
+	configASSERT(pwm_);
+	configASSERT(cp_);
+	configASSERT(meter_);
+	configASSERT(storage);
+	
+	event_queue_ = xQueueCreate(EVENT_QUEUE_DEPTH, sizeof(QueueItem));
 	configASSERT(event_queue_);
 
-	xTaskCreate(+[](void *args) {
-		static_cast<AcCharger *>(args)->EventTask();
-	}, nullptr, 256, this, tskIDLE_PRIORITY + 2, nullptr);
+	charging_timer_ = xTimerCreate(nullptr, pdMS_TO_TICKS(CHARGING_CHECK_INTERVAL_MS), pdTRUE, this, +[](TimerHandle_t timer) {
+		auto *self = static_cast<AcCharger *>(pvTimerGetTimerID(timer));
+		self->SendEvent(EV_CHARGING_CHECK);
+	});
+	configASSERT(charging_timer_);
+
+	lowcurrent_timer_ = xTimerCreate(nullptr, pdMS_TO_TICKS(LOWCURRENT_TIMEOUT_MS), pdFALSE, this, +[](TimerHandle_t timer) {
+		auto *self = static_cast<AcCharger *>(pvTimerGetTimerID(timer));
+		self->SendEvent(EV_LOWCURRENT_TIMEOUT);
+	});
+	configASSERT(lowcurrent_timer_);
 }
 
 AcCharger::~AcCharger() {
+	xTimerDelete(charging_timer_, pdMS_TO_TICKS(100));
+	xTimerDelete(lowcurrent_timer_, pdMS_TO_TICKS(100));
 	vQueueDelete(event_queue_);
+}
+
+void AcCharger::Start() {
+	xTaskCreate(+[](void *args) {
+		static_cast<AcCharger *>(args)->EventTask();
+	}, nullptr, 256, this, tskIDLE_PRIORITY + 2, nullptr);
 }
 
 void AcCharger::SendFault(uint32_t fault_bitmask) {
@@ -43,13 +74,7 @@ void AcCharger::ClearFault(uint32_t fault_bitmask) {
 }
 
 void AcCharger::SendEvent(Event event) {
-	if (xPortIsInsideInterrupt()) {
-		xQueueSendFromISR(event_queue_, &event, nullptr);
-	} else {
-		if (xQueueSend(event_queue_, &event, pdMS_TO_TICKS(100)) != pdTRUE) {
-			LOGE("AcCharger: event queue full, event=%d dropped", static_cast<int>(event));
-		}
-	}
+	SendEvent(static_cast<uint8_t>(event), true);
 }
 
 void AcCharger::Authorize() {
@@ -88,19 +113,58 @@ void AcCharger::Authorize(const uint8_t *transaction_sn,
 // 私有实现
 // ============================================================
 
-void AcCharger::EventTask() {
-	Event event{};
-	while (true) {
-		if (xQueueReceive(event_queue_, &event, portMAX_DELAY) == pdTRUE) {
-			ProcessEvent(event);
+void AcCharger::SendEvent(uint8_t event, bool outside) {
+	QueueItem item{outside, event};
+	if (xPortIsInsideInterrupt()) {
+		xQueueSendFromISR(event_queue_, &item, nullptr);
+	} else {
+		if (xQueueSend(event_queue_, &item, pdMS_TO_TICKS(100)) != pdTRUE) {
+			LOGE("AcCharger: event queue full, event=%d dropped", static_cast<int>(event));
 		}
 	}
 }
 
+void AcCharger::EventTask() {
+	QueueItem item{};
+	while (true) {
+		if (xQueueReceive(event_queue_, &item, portMAX_DELAY) == pdTRUE) {
+			ProcessEvent(item.event, item.outside);
+		}
+	}
+}
+
+void AcCharger::ProcessEvent(uint8_t event, bool outside) {
+	if (outside) {
+		ProcessEvent(static_cast<Event>(event));
+	} else {
+		ProcessEvent(static_cast<PrivateEvent>(event));
+	}
+}
+
 void AcCharger::ProcessEvent(Event event) {
-	State new_state   = FindNextState(event);
+	State next_state = FindNextState(event);
 	StopReason reason = FindStopReason(event);
-	TransitionTo(new_state, reason);
+	TransitionTo(next_state, reason);
+}
+
+void AcCharger::ProcessEvent(PrivateEvent event) {
+	switch (event) {
+		case EV_CHARGING_CHECK:
+			// 1. 检查 CP 电压
+			CheckCpState();
+			// 2. 检查电流
+			CheckCurrent();
+			// 3. 更新计费信息
+			billing_.UpdateConsumption();
+			break;
+		case EV_LOWCURRENT_TIMEOUT:
+			// 处理低电流超时事件
+			SendEvent(EV_CHARGE_FULL);
+			break;
+		default:
+			LOGW("AcCharger: unknown private event %d", static_cast<int>(event));
+			break;
+	}
 }
 
 Charger::State AcCharger::FindNextState(Event event) const {
@@ -165,9 +229,9 @@ Charger::State AcCharger::FindNextState(Event event) const {
 
 StopReason AcCharger::FindStopReason(Event event) const {
 	const std::pair<Event, StopReason> event_reason_map[] = {
-		{EV_USER_STOP, StopReason::USER_STOP}, 
-		{EV_CHARGE_FULL, StopReason::FULL},
-		{EV_BALANCE_DONE, StopReason::NORMAL},
+		{EV_USER_STOP,  StopReason::USER_STOP}, 
+		{EV_CHARGE_FULL,     StopReason::FULL},
+		{EV_BALANCE_DONE,  StopReason::NORMAL},
 		{EV_FAULT_OCCURRED, StopReason::FAULT},
 	};
 
@@ -240,4 +304,35 @@ void AcCharger::OnLeaveCharging(StopReason reason) {
 	}
 
 	LOGI("AcCharger: charging stopped | reason=%d", static_cast<int>(reason));
+}
+
+void AcCharger::CheckCpState() {
+	const std::pair<CpDetector::State, Event> cp_event_map[] = {
+		{CpDetector::GROUNDING, EV_FAULT_OCCURRED},
+		{CpDetector::PLUG_OUT,          EV_UNPLUG},
+		{CpDetector::PLUG_IN,          EV_PLUG_IN},
+		{CpDetector::READY,              EV_READY}
+	};
+	CpDetector::State cp_state = cp_->GetState();
+	for (const auto &[s, e] : cp_event_map) {
+		if (s == cp_state) {
+			SendEvent(e);
+			return;
+		}
+	}
+}
+
+void AcCharger::CheckCurrent() {
+	if (state_ != CHARGING) {
+		xTimerReset(lowcurrent_timer_, 0);
+		return;
+	}
+	float current = meter_->GetCurrent(channel_);
+	if (current < 0.1f) {
+		// 电流过低，启动低电流定时器
+		xTimerStart(lowcurrent_timer_, pdMS_TO_TICKS(100));
+	} else {
+		// 电流正常，停止低电流定时器
+		xTimerStop(lowcurrent_timer_, pdMS_TO_TICKS(100));
+	}
 }

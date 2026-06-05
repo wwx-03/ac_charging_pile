@@ -118,8 +118,6 @@ bool BillingEngine::RecoverSession() {
 	return true;
 }
 
-// private method
-
 void BillingEngine::UpdateConsumption() {
 	if (!session_active_) {
 		return;

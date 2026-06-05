@@ -1,12 +1,15 @@
 {
     "folders": [
         {
+            "name": "EIDE",
             "path": "."
         },
         {
+            "name": "embedded_cxx",
             "path": "../embedded_cxx"
         },
         {
+            "name": "ac_charging_pile",
             "path": "../.."
         }
     ],

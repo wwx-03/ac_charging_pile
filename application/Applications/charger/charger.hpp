@@ -34,6 +34,8 @@ public:
 
 	virtual ~Charger() = default;
 
+	virtual void Start() = 0; // 启动充电桩（上电自检后调用）
+
 	// 上报故障（可组合多个故障位）
 	virtual void SendFault(uint32_t fault_bitmask) = 0; // 上报故障（可组合多个故障位）
 

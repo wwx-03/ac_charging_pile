@@ -88,6 +88,11 @@ public:
 	// @return true 若存在有效的未完成会话
 	bool RecoverSession();
 
+	// 更新当前会话的消耗电量和费用（由计时器定期调用），并在余额不足时通知充电模块停止充电
+	void UpdateConsumption();
+
+	// 清除 Flash 中的会话快照（由应用层在会话正常结束后调用）
+	void EraseSnapshot();
 private:
 	size_t        channel_;
 	Charger       *charger_;
@@ -102,10 +107,4 @@ private:
 	// 禁止复制和赋值
 	BillingEngine(const BillingEngine &) = delete;
 	BillingEngine &operator=(const BillingEngine &) = delete;
-
-	// 更新当前会话的消耗电量和费用（由计时器定期调用），并在余额不足时通知充电模块停止充电
-	void UpdateConsumption();
-
-	// 清除 Flash 中的会话快照（由应用层在会话正常结束后调用）
-	void EraseSnapshot();
 };

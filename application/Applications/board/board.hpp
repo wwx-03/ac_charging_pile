@@ -11,8 +11,20 @@
 #include "protocol/protocol.hpp"
 #include "relay/relay.hpp"
 #include "rfid/rfid.hpp"
-#include "serial/serial.hpp"
+#include "pwm_controller/pwm_controller.hpp"
 #include "storage/storage.hpp"
+
+void *create_new_board();
+
+/**
+ * @brief 实现创建板子函数，在具体板子文件夹下实现。
+ * @param classname 具体板子类名，如 HS7KwhBoard
+ */
+#define DECLARE_BOARD_CLASS(classname)         \
+	void *create_new_board() {             \
+		static classname instance;     \
+		return &instance;              \
+	}
 
 // ============================================================
 // Board — 硬件抽象层 + 对象工厂
@@ -28,26 +40,23 @@
 class Board {
 public:
 	static Board &GetInstance() {
-		static Board instance;
-		return instance;
+		static Board *instance = static_cast<Board *>(create_new_board());
+		return *instance;
 	}
 
-	// ── 硬件外设 ──────────────────────────────────────────
-	Charger       *GetCharger();
-	BillingEngine *GetBillingEngine();
-	CPDetector    *GetCPDetector();
-	Led           *GetLed();
-	Meter         *GetMeter();
-	Network       *GetNetwork();
-	Relay         *GetNRelay(size_t channel);
-	Relay         *GetLRelay(size_t channel);
-	Rfid          *GetRfid();
-	Serial        *GetSerial();
-	Storage       *GetStorage();
+	// 获取板载硬件信息
+	virtual size_t GetNumChargers() const = 0;
 
-	// ── 协议层（依赖 Network，需在 Network 初始化后调用）──
-	Protocol      *GetOpsProtocol();
-	Protocol      *GetMonProtocol();
+	// ── 硬件外设 ──────────────────────────────────────────
+	virtual Charger       *GetCharger(size_t channel) = 0;
+	virtual CpDetector    *GetCpDetector(size_t channel) = 0;
+	virtual Led           *GetLed(size_t channel) = 0;
+	virtual Relay         *GetRelay(size_t channel) = 0;
+	virtual PwmController *GetPwmController(size_t channel) = 0;
+	virtual Rfid          *GetRfid(size_t channel) = 0;
+	virtual Meter         *GetMeter() = 0;
+	virtual Network       *GetNetwork() = 0;
+	virtual Storage       *GetStorage() = 0;
 
 	// ── 配置管理 ──────────────────────────────────────────
 	// 从 Flash 加载配置；若无有效配置则使用默认值
@@ -65,6 +74,7 @@ public:
 	void GetOpsSN(uint8_t *sn, size_t len) const;
 	void GetMonSN(uint8_t *sn, size_t len) const;
 	float GetPricePerKwh() const { return net_cfg_.price_per_kwh; }
+
 
 private:
 	config::NetworkConfig net_cfg_ = config::DEFAULT_NETWORK_CONFIG;

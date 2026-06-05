@@ -38,14 +38,46 @@ Application::Application() {
 // 模块接线
 // ============================================================
 static void WireModules() {
+
 	auto &board = Board::GetInstance();
+
 
 	// 1. 从 Flash 加载配置（地址、电价等）
 	board.LoadConfig();
 
-	// 2. 恢复断电前未完成的计费会话
-	if (board.GetBillingEngine()->RecoverSession()) {
-		LOGW("App: recovered interrupted billing session from Flash");
+	for (size_t i = 0; i < board.GetNumChargers(); ++i) {
+		auto *charger = board.GetCharger(i);
+		charger->OnStateChanged(+[](void *args, Charger::State old_state, Charger::State new_state) {
+
+		}, nullptr);
+
+		charger->OnSessionCompleted(+[](void *args, const ChargingSession &session) {
+
+		}, nullptr);
+
+		auto *cp = board.GetCpDetector(i);
+		cp->OnStateChanged(+[](void *args, CpDetector::State old_state, CpDetector::State new_state) {
+			const std::pair<CpDetector::State, Charger::Event> state_event_map[] = {
+				{CpDetector::GROUNDING, Charger::EV_FAULT_OCCURRED},
+				{CpDetector::PLUG_OUT,          Charger::EV_UNPLUG},
+				{CpDetector::PLUG_IN,          Charger::EV_PLUG_IN},
+				{CpDetector::READY,              Charger::EV_READY},
+			};
+
+			auto SendEachChargerEvent = [](Charger::Event event) {
+				for (size_t i = 0; i < Board::GetInstance().GetNumChargers(); ++i) {
+					auto *charger = Board::GetInstance().GetCharger(i);
+					charger->SendEvent(event);
+				}
+			};
+
+			for (const auto &[state, event] : state_event_map) {
+				if (new_state == state) {
+					SendEachChargerEvent(event);
+					break;
+				}
+			}
+		}, nullptr);
 	}
 
 	// 3. 监听网络事件 → 路由到对应协议

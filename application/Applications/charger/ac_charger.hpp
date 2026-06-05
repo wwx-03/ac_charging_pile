@@ -18,7 +18,7 @@
 // 状态流转：
 //   IDLE ──(插枪)──? PLUGGED_IN ──(授权)──? AUTHORIZING
 //                                               │
-//                                     (成功)?──┤──?(失败) → PLUGGED_IN
+//                                      (成功)?──┤──?(失败) → PLUGGED_IN
 //                                               │
 //                                        CHARGING ──(停止/故障)──? STOPPING ──? IDLE
 //   任意状态 ──(拔枪)──? IDLE
@@ -30,6 +30,7 @@ public:
 	AcCharger(size_t channel, Relay *relay, PwmController *pwm, CpDetector *cp, Meter *meter, Storage *storage);
 	~AcCharger();
 
+	void Start() override;
 	void SendFault(uint32_t fault_bitmask) override;
 	void ClearFault(uint32_t fault_bitmask) override;
 	void SendEvent(Event event) override;
@@ -45,6 +46,11 @@ public:
 	State GetState() const override { return state_; }
 
 private:
+	enum PrivateEvent : uint8_t {
+		EV_CHARGING_CHECK = 0,      // 定时检查电量消耗，更新计费信息
+		EV_LOWCURRENT_TIMEOUT,      // 定时检查低电流状态
+	};
+
 	size_t        channel_;
 	Relay         *relay_;
 	PwmController *pwm_;
@@ -52,7 +58,9 @@ private:
 	Meter         *meter_;
 	BillingEngine billing_;
 
-	QueueHandle_t event_queue_; 
+	QueueHandle_t event_queue_;
+	TimerHandle_t charging_timer_;
+	TimerHandle_t lowcurrent_timer_;
 
 	uint8_t transaction_sn_[16] = {};
 	uint8_t logic_card_id_[8]   = {};
@@ -62,8 +70,18 @@ private:
 	State    state_ = IDLE;
 	uint32_t fault_bitmask_ = 0;
 
+	// 内部事件（定时器等）与外部事件（CP检测、授权结果等）共用一个事件队列，使用Event枚举区分
+	void SendEvent(uint8_t event, bool outside = false);
+	void SendEvent(PrivateEvent event) { SendEvent(static_cast<uint8_t>(event), false); }
+
 	void EventTask();
+	void ProcessEvent(uint8_t event, bool outside);
 	void ProcessEvent(Event event);
+	void ProcessEvent(PrivateEvent event);
+
+	// 
+	void CheckCpState();
+	void CheckCurrent();
 
 	// 根据当前状态和事件查找下一个状态（不合法事件返回当前状态）
 	State FindNextState(Event event) const;

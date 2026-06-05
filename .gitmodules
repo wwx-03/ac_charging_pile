@@ -1,0 +1,3 @@
+[submodule "application/embedded_cxx"]
+	path = application/embedded_cxx
+	url = https://github.com/wwx-03/embedded_cxx

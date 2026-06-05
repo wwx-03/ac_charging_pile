@@ -10,6 +10,8 @@ class MeterBL0940 : public Meter {
 public:
 	MeterBL0940(Serial *serial);
 	~MeterBL0940() = default;
+	MeterBL0940(const MeterBL0940 &) = delete;
+	MeterBL0940 &operator=(const MeterBL0940 &) = delete;
 
 	void Start() override;
 	float GetVoltage() override { return voltage_; }
