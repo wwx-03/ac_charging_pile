@@ -3,15 +3,15 @@
 #include <stdint.h>
 
 // 充电停止原因
-enum class StopReason : uint8_t {
-    NORMAL       = 0,  // 充电完成正常停止
-    USER_STOP    = 1,  // 用户刷卡/按键停止
-    REMOTE_STOP  = 2,  // 平台远程停止
-    FULL         = 3,  // 电量充满自动停止
-    FAULT        = 4,  // 故障停止
-    POWER_LOSS   = 5,  // 异常断电后恢复
-    TIMEOUT      = 6,  // 超时停止
-    OVERCURRENT  = 7,  // 过流保护停止
+enum class StopReason : int8_t {
+    UNKNOWN      = -1,  // 未知原因
+    NORMAL       =  0,  // 充电完成正常停止
+    USER_STOP    =  1,  // 用户刷卡/APP停止
+    FULL         =  2,  // 电量充满自动停止
+    FAULT        =  3,  // 故障停止
+    POWER_LOSS   =  4,  // 异常断电后恢复
+    TIMEOUT      =  5,  // 超时停止
+    OVERCURRENT  =  6,  // 过流保护停止
 };
 
 // 单次充电会话的完整计费记录

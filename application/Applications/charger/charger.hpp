@@ -11,30 +11,34 @@ public:
 
 	enum State : uint8_t {
 		IDLE = 0,
-		PLUGGED_IN,         // 已插枪，等待授权
-		AUTHORIZING,        // 授权中（刷卡/平台远程）
-		WAITING_FOR_READY,  // 授权通过，等待平台下发启动指令
-		CHARGING,           // 充电中
-		STOPPING,           // 停止中（等待继电器断开）
-		FAULT,              // 故障
+		CONNECTED,                // 已插枪，等待授权
+		READY,                    // 授权通过，等待启动
+		WAITING_FOR_CONNECTED,    // 授权通过，等待插枪
+		CHARGING,                 // 充电中
+		STOPPING,                 // 停止中
+		COMPLETE,		  // 充电完成（已停止但未拔枪）
+		FAULT,                    // 故障
 	};
 
 	enum Event : uint8_t {
-		EV_PLUG_IN       = 0,   // CP 检测到插枪
+		EV_PLUG_IN = 0,         // CP 检测到插枪
+		EV_READY,               // CP 检测到枪已连接且准备就绪（如握手成功）
 		EV_UNPLUG,              // CP 检测到拔枪
 		EV_AUTH_SUCCESS,        // 授权成功（本地或平台确认）
-		EV_AUTH_FAIL,           // 授权失败
-		EV_REMOTE_START,        // 平台下发远程启动
-		EV_REMOTE_STOP,         // 平台下发远程停止
-		EV_USER_STOP,           // 用户主动停止（刷卡/按键）
+		EV_USER_STOP,           // 用户主动停止（刷卡/APP）
 		EV_CHARGE_FULL,         // 电池充满（BMS 信号）
 		EV_BALANCE_DONE,        // 余额用完（计费引擎通知）
 		EV_FAULT_OCCURRED,      // 故障发生
 		EV_FAULT_CLEARED,       // 故障恢复
-		EV_OVERCURRENT,         // 过流保护
 	};
 
 	virtual ~Charger() = default;
+
+	// 上报故障（可组合多个故障位）
+	virtual void SendFault(uint32_t fault_bitmask) = 0; // 上报故障（可组合多个故障位）
+
+	// 清除故障（可组合多个故障位）
+	virtual void ClearFault(uint32_t fault_bitmask) = 0; // 清除故障（可组合多个故障位）
 
 	// 投递充电事件（线程/ISR 安全）
 	virtual void SendEvent(Event event) = 0;
