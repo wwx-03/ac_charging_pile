@@ -4,10 +4,10 @@
             "path": "."
         },
         {
-            "path": ".."
+            "path": "../embedded_cxx"
         },
         {
-            "path": "../embedded_cxx"
+            "path": "../.."
         }
     ],
     "settings": {
