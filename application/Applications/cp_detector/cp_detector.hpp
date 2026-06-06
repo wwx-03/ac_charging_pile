@@ -29,7 +29,7 @@ public:
 	}
 
 protected:
-	State state_   = GROUNDING;
+	State state_   = PLUG_OUT;
 	bool  enabled_ = true;
 	std::pair<custom::function<void(void *, State, State)>, void *> state_changed_cb_ = {};
 };
