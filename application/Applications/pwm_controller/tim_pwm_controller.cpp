@@ -15,6 +15,9 @@ void TimPwmController::SetDutyCycle(float duty_cycle) {
 	} else if (duty_cycle > 100.0f) {
 		duty_cycle = 100.0f;
 	}
+	if (inverted_) {
+		duty_cycle = 100.0f - duty_cycle;
+	}
 	current_duty_cycle_ = duty_cycle;
 
 	uint32_t pulse_length = static_cast<uint32_t>((htim_->Init.Period + 1) * (current_duty_cycle_ / 100.0f));

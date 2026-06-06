@@ -73,6 +73,14 @@ static void WireModules() {
 			size_t channel = reinterpret_cast<size_t>(args);
 			auto *charger = Board::GetInstance().GetCharger(channel);
 
+			if (new_state == CpDetector::GROUNDING) {
+				charger->SendFault(fault_bitmask::GROUND_FAULT);
+				return;
+			} else if (old_state == CpDetector::GROUNDING) {
+				charger->ClearFault(fault_bitmask::GROUND_FAULT);
+				return;
+			}
+
 			for (const auto &[state, event] : state_event_map) {
 				if (new_state == state) {
 					charger->SendEvent(event);
@@ -105,6 +113,14 @@ void Application::Start() {
 	xTaskCreate(+[](void *args) {
 		static_cast<Application *>(args)->MainEventLoop();
 	}, nullptr, 256, this, tskIDLE_PRIORITY + 2, nullptr);
+
+	auto &board = Board::GetInstance();
+	for (size_t i = 0; i < board.GetNumChargers(); ++i) {
+		auto *charger = board.GetCharger(i);
+		charger->Start();
+	}
+	auto *meter = board.GetMeter();
+	meter->Start();
 }
 
 void Application::Schedule(custom::function<void(void *)> callback, void *args) {
@@ -126,6 +142,7 @@ void Application::Schedule(custom::function<void(void *)> callback, void *args) 
 
 void Application::MainEventLoop() {
 	EventQueueItem item{};
+	xTimerStart(timer_, pdMS_TO_TICKS(100));
 	while (true) {
 		if (xQueueReceive(event_queue_, &item, portMAX_DELAY) != pdTRUE) {
 			LOGE("Application: failed to receive event");

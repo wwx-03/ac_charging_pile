@@ -52,6 +52,8 @@ AcCharger::AcCharger(size_t channel, Relay *relay, PwmController *pwm, CpDetecto
 		self->SendEvent(EV_LOWCURRENT_TIMEOUT);
 	});
 	configASSERT(lowcurrent_timer_);
+
+	cp->Enabled(false); // 初始状态下禁用 CP 检测，直到插枪后再启用
 }
 
 AcCharger::~AcCharger() {
@@ -71,6 +73,7 @@ void AcCharger::SendFault(uint32_t fault_bitmask) {
 		LockGuard lock(mutex_);
 		fault_bitmask_ |= fault_bitmask;
 	}
+	LOGE("AcCharger %d: fault occurred, bitmask=0x%08X", static_cast<int>(channel_), fault_bitmask);
 	SendEvent(EV_FAULT_OCCURRED);
 }
 
@@ -137,6 +140,12 @@ void AcCharger::SendEvent(uint8_t event, bool outside) {
 
 void AcCharger::EventTask() {
 	QueueItem item{};
+
+	pwm_->SetDutyCycle(100.0f);
+	pwm_->Start();
+	vTaskDelay(pdMS_TO_TICKS(1000)); // 等待 PWM 稳定
+	cp_->Enabled(true);
+
 	while (true) {
 		if (xQueueReceive(event_queue_, &item, portMAX_DELAY) == pdTRUE) {
 			ProcessEvent(item.event, item.outside);
@@ -197,6 +206,7 @@ Charger::State AcCharger::FindNextState(Event event) const {
 		// 已插枪车就绪状态下：
 		{READY, EV_FAULT_OCCURRED, FAULT},
 		{READY, EV_UNPLUG, IDLE},
+		{READY, EV_PLUG_IN, CONNECTED},
 		{READY, EV_AUTH_SUCCESS, CHARGING},
 
 		// 等待插枪状态下:
@@ -262,13 +272,13 @@ void AcCharger::TransitionTo(State new_state, StopReason reason) {
 	State old_state = state_;
 	state_          = new_state;
 
-	LOGI("AcCharger: %d -> %d", static_cast<int>(old_state), static_cast<int>(new_state));
+	LOGI("AcCharger: %d -> %d\r\n", static_cast<int>(old_state), static_cast<int>(new_state));
 
 	// 1. 操作 PWM 控制器
 	if (new_state != IDLE && new_state != FAULT) {
 		pwm_->SetDutyCycle(53.3f); // 其他状态全功率输出
 	} else {
-		pwm_->SetDutyCycle(0.0f); // IDLE/FAULT 状态不输出
+		pwm_->SetDutyCycle(100.0f); // IDLE/FAULT 状态不输出
 	}
 
 	// 2. 操作继电器，仅在充电状态开启，其他状态关闭
@@ -301,7 +311,7 @@ void AcCharger::OnEnterCharging() {
 		physic_card_id_, sizeof(physic_card_id_),
 		balance_);
 
-	LOGI("AcCharger: charging started");
+	LOGI("AcCharger: charging started\r\n");
 }
 
 void AcCharger::OnLeaveCharging(StopReason reason) {
@@ -314,7 +324,7 @@ void AcCharger::OnLeaveCharging(StopReason reason) {
 		cb(args, session);
 	}
 
-	LOGI("AcCharger: charging stopped | reason=%d", static_cast<int>(reason));
+	LOGI("AcCharger: charging stopped | reason=%d\r\n", static_cast<int>(reason));
 }
 
 void AcCharger::CheckCpState() {

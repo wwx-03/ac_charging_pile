@@ -1,5 +1,5 @@
 version: "4.1"
-name: HSEVB_AC7KCAR01_V2.0_SV1.0.0
+name: project
 type: ARM
 deviceName: null
 packDir: null
@@ -280,8 +280,8 @@ targets:
         baseAddr: ""
         bin: ""
         cpuInfo:
-          cpuName: "null"
-          vendor: "null"
+          cpuName: APM32F103CB
+          vendor: Geehy
         otherCmds: ""
         proType: 1
         speed: 8000

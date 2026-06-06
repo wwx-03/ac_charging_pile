@@ -2,6 +2,7 @@
 
 #ifdef CONFIG_USE_HSEVB_AC7KCAR01_V22_BOARD
 
+#include "adc.h"
 #include "tim.h"
 #include "usart.h"
 
@@ -29,10 +30,31 @@ namespace {
 	static constexpr size_t SERIAL_METER = 1;
 	static constexpr size_t SERIAL_DISPLAY = 2;
 
+	static constexpr size_t NUM_ADC1_CHANNELS = 1;
+	static constexpr size_t ADC_CHANNEL_CP = 0;
+
+	// 
+	static uint16_t s_adc1_buffer[NUM_ADC1_CHANNELS] = {};
+
 }
 
 HS7KwhBoard::HS7KwhBoard() {
 
+	HAL_ADCEx_Calibration_Start(&hadc1);
+	HAL_ADC_Start_DMA(&hadc1, (uint32_t *)s_adc1_buffer, NUM_ADC1_CHANNELS);
+	__HAL_DMA_DISABLE_IT(hadc1.DMA_Handle, DMA_IT_HT);
+	HAL_TIM_Base_Start(&htim3);
+
+	// 注册串口回调
+	auto *serial = GetSerial(SERIAL_METER);
+	serial->OnMessageReceived(+[](void *args, const uint8_t *data, size_t size) {
+		auto &board = GetInstance();
+		auto *meter = static_cast<MeterBL0940 *>(board.GetMeter());
+		meter->EnqueueMessage(data, size);
+	}, nullptr);
+
+	auto *pwm = static_cast<TimPwmController *>(GetPwmController(CHARGER_1));
+	pwm->SetInverted(true); // 反转占空比，使得 100% 对应最小脉冲宽度，0% 对应最大脉冲宽度
 }
 
 size_t HS7KwhBoard::GetNumChargers() const {
@@ -62,12 +84,12 @@ Led *HS7KwhBoard::GetLed(size_t channel) {
 }
 
 Relay *HS7KwhBoard::GetRelay(size_t channel) {
-	static PairGpioRelay relay(GPIOB, GPIO_PIN_0, GPIOB, GPIO_PIN_1, GPIOB, GPIO_PIN_2, GPIOB, GPIO_PIN_3);
+	static PairGpioRelay relay(GPIOA, GPIO_PIN_0, GPIOB, GPIO_PIN_13, GPIOA, GPIO_PIN_0, GPIOB, GPIO_PIN_14);
 	return &relay;
 }
 
 PwmController *HS7KwhBoard::GetPwmController(size_t channel) {
-	static TimPwmController pwm(&htim3, TIM_CHANNEL_1);
+	static TimPwmController pwm(&htim4, TIM_CHANNEL_3);
 	return &pwm;
 }
 
@@ -101,6 +123,14 @@ Serial *HS7KwhBoard::GetSerial(size_t port) {
 
 // 板级支持回调注册
 
+extern "C" void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
+	// 充电桩控制器使用 ADC 进行 CP 检测，注册回调以便在 ADC 转换完成时通知 CP 检测器
+	auto &board = static_cast<HS7KwhBoard &>(HS7KwhBoard::GetInstance());
+	for (size_t i = 0; i < NUM_CHARGERS; ++i) {
+		auto *cp_detector = static_cast<AdcCpDetector *>(board.GetCpDetector(i));
+		cp_detector->UpdateState(s_adc1_buffer[ADC_CHANNEL_CP]);
+	}
+}
 
 extern "C" void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size) {
 	auto &board = static_cast<HS7KwhBoard &>(HS7KwhBoard::GetInstance());
@@ -115,6 +145,14 @@ extern "C" void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 	for (size_t i = 0; i < NUM_SERIALS; ++i) {
 		auto *serial = static_cast<SerialUART *>(board.GetSerial(i));
 		serial->TxCompleteCallback(huart);
+	}
+}
+
+extern "C" void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
+	auto &board = static_cast<HS7KwhBoard &>(HS7KwhBoard::GetInstance());
+	for (size_t i = 0; i < NUM_SERIALS; ++i) {
+		auto *serial = static_cast<SerialUART *>(board.GetSerial(i));
+		serial->ErrorCallback(huart);
 	}
 }
 

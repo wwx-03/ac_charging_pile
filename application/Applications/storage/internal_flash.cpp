@@ -5,24 +5,24 @@
 #include <log/log>
 
 InternalFlash::InternalFlash() {
-	flash_size_ = *((volatile uint32_t *)FLASH_SIZE_DATA_REGISTER);
+	flash_size_ = *(uint16_t *)(FLASH_SIZE_DATA_REGISTER);
 	if (flash_size_ <= 128) {
 		page_size_ = 1024;
 	} else {
 		page_size_ = 2048;
 	}
-	LOGI("InternalFlash: Detected flash size %lu KB, page size %lu B", flash_size_, page_size_);
+	LOGI("InternalFlash: Detected flash size %u KB, page size %u B\r\n", flash_size_, page_size_);
 }
 
 void InternalFlash::Save(uint32_t address, const uint8_t *data, size_t length) {
 	if (address + length > FLASH_BASE + flash_size_ * page_size_) {
-		LOGE("InternalFlash: Save out of bounds (address=0x%08lX, length=%lu)", address, length);
+		LOGE("InternalFlash: Save out of bounds (address=0x%08X, length=%u)\r\n", address, length);
 		return;
 	}
 
 	uint8_t *buffer = new uint8_t[page_size_];
 	if (!buffer) {
-		LOGE("InternalFlash: Failed to allocate buffer for flash page");
+		LOGE("InternalFlash: Failed to allocate buffer for flash page\r\n");
 		return;
 	}
 
@@ -74,7 +74,7 @@ exit:
 
 void InternalFlash::Load(uint32_t address, uint8_t *data, size_t length) {
 	if (address + length > FLASH_BASE + flash_size_ * page_size_) {
-		LOGE("InternalFlash: Load out of bounds (address=0x%08lX, length=%lu)", address, length);
+		LOGE("InternalFlash: Load out of bounds (address=0x%08X, length=%u)\r\n", address, length);
 		return;
 	}
 

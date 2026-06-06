@@ -13,8 +13,11 @@ public:
 	void SetDutyCycle(float duty_cycle) override;
 	void Start() override;
 	void Stop() override;
+
+	void SetInverted(bool inverted) { inverted_ = inverted; }
 private:
 	TIM_HandleTypeDef *htim_;
 	uint32_t channel_;
 	float current_duty_cycle_ = 0.0f;
+	bool  inverted_ = false;
 };
