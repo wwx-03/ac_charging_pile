@@ -1,11 +1,16 @@
 #pragma once
 
+#include "project_config.h"
+
+#ifdef CONFIG_USE_HSEVB_AC7KCAR01_V22_BOARD
+
 #include "../board.hpp"
 
 #include "serial/serial.hpp"
 
 class HS7KwhBoard : public Board {
 public:
+	HS7KwhBoard();
 
 	size_t GetNumChargers() const override;
 
@@ -19,7 +24,10 @@ public:
 	Network       *GetNetwork() override;
 	Storage       *GetStorage() override;
 
-private:
+	// 特有的外设接口
 	Serial *GetSerial(size_t port);
+private:
+
 };
 
+#endif /* CONFIG_USE_HSEVB_AC7KCAR01_V22_BOARD */

@@ -3,6 +3,7 @@
 #include "main.h"
 #include "FreeRTOS.h"
 #include "queue.h"
+#include "semphr.h"
 
 #include "charger/charger.hpp"
 #include "billing/billing_engine.hpp"
@@ -58,9 +59,10 @@ private:
 	Meter         *meter_;
 	BillingEngine billing_;
 
-	QueueHandle_t event_queue_;
-	TimerHandle_t charging_timer_;
-	TimerHandle_t lowcurrent_timer_;
+	SemaphoreHandle_t mutex_;
+	QueueHandle_t     event_queue_;
+	TimerHandle_t     charging_timer_;
+	TimerHandle_t     lowcurrent_timer_;
 
 	uint8_t transaction_sn_[16] = {};
 	uint8_t logic_card_id_[8]   = {};

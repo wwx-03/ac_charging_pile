@@ -13,13 +13,9 @@ PairGpioRelay::PairGpioRelay(GPIO_TypeDef *n_drive_port, uint16_t n_drive_pin,
 		, l_detect_port_(l_detect_port)
 		, l_detect_pin_(l_detect_pin) {
 	configASSERT(n_drive_port_);
-	configASSERT(n_drive_pin_);
 	configASSERT(n_detect_port_);
-	configASSERT(n_detect_pin_);
 	configASSERT(l_drive_port_);
-	configASSERT(l_drive_pin_);
 	configASSERT(l_detect_port_);
-	configASSERT(l_detect_pin_);
 
 	n_drive_port_->BSRR = n_drive_pin_ << 16U; // Reset pin to low level
 	l_drive_port_->BSRR = l_drive_pin_ << 16U; // Reset pin to low level

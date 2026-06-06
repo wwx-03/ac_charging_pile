@@ -37,7 +37,8 @@
             "editor.insertSpaces": true,
             "editor.tabSize": 4,
             "editor.autoIndent": "advanced"
-        }
+        },
+        "editor.fontSize": 16
     },
     "extensions": {
         "recommendations": [

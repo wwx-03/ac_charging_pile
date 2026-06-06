@@ -9,6 +9,8 @@
 #include <log/log>
 #include <time/time>
 
+#include "util/lock_guard.hpp"
+
 struct QueueItem {
 	bool outside;
 	uint8_t event;
@@ -33,6 +35,9 @@ AcCharger::AcCharger(size_t channel, Relay *relay, PwmController *pwm, CpDetecto
 	configASSERT(meter_);
 	configASSERT(storage);
 	
+	mutex_ = xSemaphoreCreateMutex();
+	configASSERT(mutex_);
+
 	event_queue_ = xQueueCreate(EVENT_QUEUE_DEPTH, sizeof(QueueItem));
 	configASSERT(event_queue_);
 
@@ -62,12 +67,18 @@ void AcCharger::Start() {
 }
 
 void AcCharger::SendFault(uint32_t fault_bitmask) {
-	fault_bitmask_ |= fault_bitmask;
+	{
+		LockGuard lock(mutex_);
+		fault_bitmask_ |= fault_bitmask;
+	}
 	SendEvent(EV_FAULT_OCCURRED);
 }
 
 void AcCharger::ClearFault(uint32_t fault_bitmask) {
-	fault_bitmask_ &= ~fault_bitmask;
+	{
+		LockGuard lock(mutex_);
+		fault_bitmask_ &= ~fault_bitmask;
+	}
 	if (!fault_bitmask_) {
 		SendEvent(EV_FAULT_CLEARED);
 	}

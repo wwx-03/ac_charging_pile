@@ -44,6 +44,9 @@ public:
 		return *instance;
 	}
 
+	Board()  = default;
+	~Board() = default;
+
 	// 获取板载硬件信息
 	virtual size_t GetNumChargers() const = 0;
 
@@ -58,31 +61,7 @@ public:
 	virtual Network       *GetNetwork() = 0;
 	virtual Storage       *GetStorage() = 0;
 
-	// ── 配置管理 ──────────────────────────────────────────
-	// 从 Flash 加载配置；若无有效配置则使用默认值
-	void LoadConfig();
-
-	void SetOpsAddress(const char *ip, size_t ip_len, uint16_t port);
-	void SetMonAddress(const char *ip, size_t ip_len, uint16_t port);
-	void SetOpsSN(const uint8_t *sn, size_t len);
-	void SetMonSN(const uint8_t *sn, size_t len);
-	void SetPricePerKwh(float price);
-	void SetQRCode(const char *qrcode, size_t len);
-
-	void GetOpsAddress(char *ip, size_t ip_len, uint16_t *port) const;
-	void GetMonAddress(char *ip, size_t ip_len, uint16_t *port) const;
-	void GetOpsSN(uint8_t *sn, size_t len) const;
-	void GetMonSN(uint8_t *sn, size_t len) const;
-	float GetPricePerKwh() const { return net_cfg_.price_per_kwh; }
-
-
 private:
-	config::NetworkConfig net_cfg_ = config::DEFAULT_NETWORK_CONFIG;
-
-	Board()                        = default;
-	~Board()                       = default;
-	Board(const Board &)           = delete;
+	Board(const Board &)            = delete;
 	Board &operator=(const Board &) = delete;
-
-	void SaveConfig();
 };

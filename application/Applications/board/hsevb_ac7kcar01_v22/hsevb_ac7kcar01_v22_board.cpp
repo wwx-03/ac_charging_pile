@@ -1,4 +1,6 @@
-#include "hs7kwh_board.hpp"
+#include "hsevb_ac7kcar01_v22_board.hpp"
+
+#ifdef CONFIG_USE_HSEVB_AC7KCAR01_V22_BOARD
 
 #include "tim.h"
 #include "usart.h"
@@ -15,6 +17,8 @@
 
 #include "serial/serial_uart.hpp"
 
+DECLARE_BOARD_CLASS(HS7KwhBoard)
+
 namespace {
 
 	static constexpr size_t NUM_CHARGERS = 1;
@@ -24,6 +28,10 @@ namespace {
 	static constexpr size_t SERIAL_NETWORK = 0;
 	static constexpr size_t SERIAL_METER = 1;
 	static constexpr size_t SERIAL_DISPLAY = 2;
+
+}
+
+HS7KwhBoard::HS7KwhBoard() {
 
 }
 
@@ -84,9 +92,30 @@ Storage *HS7KwhBoard::GetStorage() {
 
 Serial *HS7KwhBoard::GetSerial(size_t port) {
 	static SerialUART serials[NUM_SERIALS] = {
-		SerialUART(&huart1, 256, 2), // NETWORK
-		SerialUART(&huart2, 48,  2), // METER
-		SerialUART(&huart3, 128, 2)  // DISPLAY
+		SerialUART(&huart1, 256, 256, 2), // NETWORK
+		SerialUART(&huart2, 16,  48,  2), // METER
+		SerialUART(&huart3, 128, 128, 2)  // DISPLAY
 	};
 	return &serials[port];
 }
+
+// 板级支持回调注册
+
+
+extern "C" void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size) {
+	auto &board = static_cast<HS7KwhBoard &>(HS7KwhBoard::GetInstance());
+	for (size_t i = 0; i < NUM_SERIALS; ++i) {
+		auto *serial = static_cast<SerialUART *>(board.GetSerial(i));
+		serial->MessageReceivedCallback(huart, size);
+	}
+}
+
+extern "C" void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
+	auto &board = static_cast<HS7KwhBoard &>(HS7KwhBoard::GetInstance());
+	for (size_t i = 0; i < NUM_SERIALS; ++i) {
+		auto *serial = static_cast<SerialUART *>(board.GetSerial(i));
+		serial->TxCompleteCallback(huart);
+	}
+}
+
+#endif /* CONFIG_USE_HSEVB_AC7KCAR01_V22_BOARD */

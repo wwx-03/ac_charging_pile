@@ -3,8 +3,6 @@
 #include <string.h>
 #include <log/log>
 
-#include "application.hpp"
-
 namespace {
 
 	static constexpr inline uint32_t RX_COMPLETED = (1 << 0);
@@ -25,9 +23,15 @@ namespace {
 
 }
 
-SerialUART::SerialUART(UART_HandleTypeDef *huart, size_t item_size, size_t item_length)
+SerialUART::SerialUART(UART_HandleTypeDef *huart, size_t tx_buffer_size, size_t rx_buffer_size, size_t rx_buffer_length)
 		: huart_(huart)
-		, ring_buffer_(item_size, item_length) {
+		, tx_buffer_(new uint8_t[tx_buffer_size])
+		, tx_buffer_size_(tx_buffer_size)
+		, ring_buffer_(rx_buffer_size, rx_buffer_length) {
+
+	configASSERT(huart_);
+	configASSERT(tx_buffer_);
+	
 	tx_binary_ = xSemaphoreCreateBinary();
 	configASSERT(tx_binary_);
 	xSemaphoreGive(tx_binary_);
@@ -41,7 +45,9 @@ SerialUART::SerialUART(UART_HandleTypeDef *huart, size_t item_size, size_t item_
 }
 
 SerialUART::~SerialUART() {
+	HAL_UART_DMAStop(huart_);
 	vSemaphoreDelete(tx_binary_);
+	delete[] tx_buffer_;
 }
 
 bool SerialUART::WriteAsync(const uint8_t *data, size_t size, uint32_t timeout, bool need_copy) {
@@ -52,25 +58,20 @@ bool SerialUART::WriteAsync(const uint8_t *data, size_t size, uint32_t timeout, 
 
 	uint8_t *tx_data{};
 	if (need_copy) {
-		tx_data = new uint8_t[size];
-		if (!tx_data) {
-			LOGE("SerialUART: Failed to allocate memory for TX data");
+		if (size > tx_buffer_size_) {
+			LOGE("SerialUART: Data size exceeds TX buffer capacity");
 			xSemaphoreGive(tx_binary_);
 			return false;
 		}
-		need_free_ = true;
+		tx_data = tx_buffer_;
+		memcpy(tx_data, data, size);
 	} else {
 		tx_data = const_cast<uint8_t *>(data);
-		need_free_ = false;
 	}
 
 	if (HAL_UART_Transmit_DMA(huart_, tx_data, size) != HAL_OK) {
 		LOGE("SerialUART: Failed to start UART transmission");
 		xSemaphoreGive(tx_binary_);
-		if (need_copy) {
-			need_free_ = false;
-			delete[] tx_data;
-		}
 		return false;
 	}
 	return true;
@@ -134,21 +135,12 @@ void SerialUART::MessageReceivedCallback(UART_HandleTypeDef *huart, size_t size)
 }
 
 void SerialUART::TxCompleteCallback(UART_HandleTypeDef *huart) {
-	if (huart_ == huart) {
-
-		auto &app = Application::GetInstance();
-		app.Schedule(+[](void *args) {
-			auto *self = static_cast<SerialUART*>(args);
-			if (self->need_free_) {
-				self->need_free_ = false;
-				delete[] self->huart_->pTxBuffPtr;
-			}
-		}, this);
-
-		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-		xSemaphoreGiveFromISR(tx_binary_, &xHigherPriorityTaskWoken);
-		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+	if (huart_ != huart) {
+		return;
 	}
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	xSemaphoreGiveFromISR(tx_binary_, &xHigherPriorityTaskWoken);
+	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
 void SerialUART::ErrorCallback(UART_HandleTypeDef *huart) {

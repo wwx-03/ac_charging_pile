@@ -1,7 +1,11 @@
 #include "application.hpp"
 
+#include "iwdg.h"
+
 #include <log/log>
 
+#include "fault_bitmask.hpp"
+#include "system_info.hpp"
 #include "board/board.hpp"
 #include "charger/charger.hpp"
 #include "network/network.hpp"
@@ -13,6 +17,7 @@ namespace {
 
 	enum EventId {
 		SCHEDULE = 0,
+		TIME,
 	};
 
 	struct EventQueueItem {
@@ -24,14 +29,19 @@ namespace {
 		custom::function<void(void *)> callback;
 		void *args;
 	};
-	static_assert(sizeof(ScheduleEventData) <= sizeof(EventQueueItem::data),
-				  "ScheduleEventData too large for EventQueueItem");
+	static_assert(sizeof(ScheduleEventData) <= sizeof(EventQueueItem::data), "ScheduleEventData too large for EventQueueItem");
 
 } // namespace
 
 Application::Application() {
 	event_queue_ = xQueueCreate(3, sizeof(EventQueueItem));
 	configASSERT(event_queue_);
+
+	timer_ = xTimerCreate(nullptr, pdMS_TO_TICKS(1000), pdTRUE, this, +[](TimerHandle_t timer) {
+		auto *self = static_cast<Application *>(pvTimerGetTimerID(timer));
+		self->TimerCallback();
+	});
+	configASSERT(timer_);
 }
 
 // ============================================================
@@ -40,10 +50,6 @@ Application::Application() {
 static void WireModules() {
 
 	auto &board = Board::GetInstance();
-
-
-	// 1. 从 Flash 加载配置（地址、电价等）
-	board.LoadConfig();
 
 	for (size_t i = 0; i < board.GetNumChargers(); ++i) {
 		auto *charger = board.GetCharger(i);
@@ -64,84 +70,33 @@ static void WireModules() {
 				{CpDetector::READY,              Charger::EV_READY},
 			};
 
-			auto SendEachChargerEvent = [](Charger::Event event) {
-				for (size_t i = 0; i < Board::GetInstance().GetNumChargers(); ++i) {
-					auto *charger = Board::GetInstance().GetCharger(i);
-					charger->SendEvent(event);
-				}
-			};
+			size_t channel = reinterpret_cast<size_t>(args);
+			auto *charger = Board::GetInstance().GetCharger(channel);
 
 			for (const auto &[state, event] : state_event_map) {
 				if (new_state == state) {
-					SendEachChargerEvent(event);
+					charger->SendEvent(event);
 					break;
 				}
 			}
-		}, nullptr);
+		}, reinterpret_cast<void *>(i));
+
+		auto *relay = board.GetRelay(i);
+		relay->OnFault(+[](void *args) {
+			size_t channel = reinterpret_cast<size_t>(args);
+			auto *charger = Board::GetInstance().GetCharger(channel);
+			charger->SendFault(fault_bitmask::RELAY_STEAKED);
+		}, reinterpret_cast<void *>(i));
 	}
 
-	// 3. 监听网络事件 → 路由到对应协议
-	board.GetNetwork()->RegisterEventHandler(
-		[](void *args, Network::EventId id, void *data) {
-			auto &board_ = *static_cast<Board *>(args);
-			if (id == Network::CONNECTED) {
-				auto *ev = static_cast<Network::ConnectedEventData *>(data);
-				if (ev->fd == config::OPS_FD) {
-					board_.GetOpsProtocol()->Start(ev->fd);
-				} else if (ev->fd == config::MON_FD) {
-					board_.GetMonProtocol()->Start(ev->fd);
-				}
-			} else if (id == Network::DATA_RECEIVED) {
-				auto *ev = static_cast<Network::DataReceivedEventData *>(data);
-				if (ev->fd == config::OPS_FD) {
-					board_.GetOpsProtocol()->OnDataReceived(ev->data, ev->length);
-				} else if (ev->fd == config::MON_FD) {
-					board_.GetMonProtocol()->OnDataReceived(ev->data, ev->length);
-				}
-			}
-		},
-		&board
-	);
-
-	// 4. 监听运营协议事件 → 控制充电桩
-	board.GetOpsProtocol()->RegisterEventHandler(
-		[](void *args, Protocol::EventId id, void *data) {
-			auto &board_ = *static_cast<Board *>(args);
-			auto *charger = board_.GetCharger();
-			if (id == Protocol::OPS_REMOTE_START_REQUEST) {
-				// data 中包含 token/card_id，此处简单直接 Authorize
-				charger->Authorize(nullptr, 0);
-			} else if (id == Protocol::OPS_REMOTE_STOP_REQUEST) {
-				charger->SendEvent(Charger::EV_REMOTE_STOP);
-			} else if (id == Protocol::OPS_LOGOUT) {
-				LOGI("App: ops platform logged out");
-			}
-		},
-		&board
-	);
-
-	// 5. 充电会话结束 → 双平台上报
-	board.GetCharger()->OnSessionCompleted(
-		[](void *args, const ChargingSession &session) {
-			auto &board_ = *static_cast<Board *>(args);
-			static_cast<OpsProtocol *>(board_.GetOpsProtocol())->ReportSession(session);
-			static_cast<MonProtocol *>(board_.GetMonProtocol())->ReportSession(session);
-		},
-		&board
-	);
-
-	// 6. 充电状态变化 → 监控平台上报
-	board.GetCharger()->OnStateChanged(
-		[](void *args, Charger::State old_s, Charger::State new_s) {
-			auto &board_ = *static_cast<Board *>(args);
-			static_cast<MonProtocol *>(board_.GetMonProtocol())
-				->ReportDeviceStatus(static_cast<uint8_t>(new_s));
-		},
-		&board
-	);
-
-	// 7. 启动网络（开始 LAR01 初始化 → 拨号 → 双 TCP 连接）
-	board.GetNetwork()->Start();
+	auto *meter = board.GetMeter();
+	meter->OnFault(+[](void *args) {
+		auto &board = Board::GetInstance();
+		for (size_t i = 0; i < board.GetNumChargers(); ++i) {
+			auto *charger = board.GetCharger(i);
+			charger->SendFault(fault_bitmask::METER_FAULT);
+		}
+	}, nullptr);
 }
 
 void Application::Start() {
@@ -179,9 +134,22 @@ void Application::MainEventLoop() {
 		if (item.id == SCHEDULE) {
 			auto *item_data = reinterpret_cast<ScheduleEventData *>(item.data);
 			item_data->callback(item_data->args);
+		} else if (item.id == TIME) {
+			static uint8_t cnt = 0;
+			if (++cnt % 10 == 0) {
+				HAL_IWDG_Refresh(&hiwdg);
+				SystemInfo::PrintHeapStats();
+			}
 		} else {
 			LOGW("Application: unknown event id %d", static_cast<int>(item.id));
 		}
+	}
+}
+
+void Application::TimerCallback() {
+	EventQueueItem item{TIME, {}};
+	if (xQueueSend(event_queue_, &item, 0) != pdTRUE) {
+		LOGE("Application: failed to send timer event");
 	}
 }
 

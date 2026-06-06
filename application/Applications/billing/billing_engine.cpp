@@ -55,7 +55,7 @@ void BillingEngine::StartSession(const uint8_t *transaction_sn,
 		memcpy(current_session_.physic_card_id, physic_card_id, safe_len);
 	}
 
-	current_session_.start_time	  = time(nullptr);
+	// current_session_.start_time	  = time(nullptr);
 	current_session_.start_energy_kwh = meter_->GetEnergy(channel_);
 	current_session_.balance          = balance;
 	current_session_.valid            = true;
@@ -73,7 +73,7 @@ ChargingSession BillingEngine::StopSession(StopReason reason) {
 		return ChargingSession{};
 	}
 
-	current_session_.stop_time   = time(nullptr);
+	// current_session_.stop_time   = time(nullptr);
 	current_session_.stop_reason = reason;
 	session_active_              = false;
 
@@ -98,10 +98,11 @@ float BillingEngine::GetCurrentCost() const {
 }
 
 void BillingEngine::SaveSnapshot() {
-	storage_->Save(config::STORED_BILLING_SESSION_ADDR, reinterpret_cast<const uint8_t *>(&current_session_), sizeof(current_session_));
+	// storage_->Save(config::STORED_BILLING_SESSION_ADDR, reinterpret_cast<const uint8_t *>(&current_session_), sizeof(current_session_));
 }
 
 bool BillingEngine::RecoverSession() {
+#if 0
 	ChargingSession saved{};
 	storage_->Load(config::STORED_BILLING_SESSION_ADDR,
 				   reinterpret_cast<uint8_t *>(&saved), sizeof(saved));
@@ -115,6 +116,7 @@ bool BillingEngine::RecoverSession() {
 
 	current_session_ = saved;
 	session_active_  = true;
+#endif
 	return true;
 }
 
@@ -135,8 +137,8 @@ void BillingEngine::UpdateConsumption() {
 
 	// 根据当前时间计算时段
 	struct tm timeinfo{};
-	time_t now = time(nullptr);
-	_localtime_r(&now, &timeinfo);
+	// time_t now = time(nullptr);
+	// _localtime_r(&now, &timeinfo);
 	uint8_t slot = (timeinfo.tm_hour * 60 + timeinfo.tm_min) / 30;  // 48 个半小时的时段划分
 	if (slot >= 48) { slot = 0; }
 	uint8_t period = billing_model_.time_slot[slot];
@@ -173,5 +175,5 @@ void BillingEngine::UpdateConsumption() {
 
 void BillingEngine::EraseSnapshot() {
 	ChargingSession empty{};
-	storage_->Save(config::STORED_BILLING_SESSION_ADDR, reinterpret_cast<const uint8_t *>(&empty), sizeof(empty));
+	// storage_->Save(config::STORED_BILLING_SESSION_ADDR, reinterpret_cast<const uint8_t *>(&empty), sizeof(empty));
 }

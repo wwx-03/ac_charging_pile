@@ -1,15 +1,18 @@
 #pragma once
 
-template <typename T>
+#include "FreeRTOS.h"
+#include "semphr.h"
+
+template <TickType_t timeout = pdMS_TO_TICKS(100)>
 class LockGuard {
 public:
-	explicit LockGuard(T *object) : object_(object) {
-		object_->Lock();
+	explicit LockGuard(SemaphoreHandle_t mutex) : mutex_(mutex) {
+		xSemaphoreTake(mutex_, timeout);
 	}
 
 	~LockGuard() {
-		object_->Unlock();
+		xSemaphoreGive(mutex_);
 	}
 private:
-	T *object_;
+	SemaphoreHandle_t mutex_;
 };

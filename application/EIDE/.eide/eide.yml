@@ -115,7 +115,9 @@ targets:
         - ../Applications
         - ../../public
       libList: []
-    excludeList: []
+    excludeList:
+      - ../Applications/protocol
+      - ../Applications/network
     settings:
       debugger: cortex-debug
     toolchain: AC6

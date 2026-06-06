@@ -11,7 +11,7 @@
 
 class SerialUART : public Serial {
 public:
-	explicit SerialUART(UART_HandleTypeDef *huart, size_t item_size = 256, size_t item_length = 2);
+	explicit SerialUART(UART_HandleTypeDef *huart, size_t tx_buffer_size = 256, size_t rx_buffer_size = 256, size_t rx_buffer_length = 2);
 	~SerialUART();
 	bool WriteAsync(const uint8_t *data, size_t size, uint32_t timeout, bool need_copy = true) override;
 	bool WriteSync(const uint8_t *data, size_t size, uint32_t timeout) override;
@@ -23,13 +23,17 @@ public:
 
 private:
 	UART_HandleTypeDef *huart_;
-	RingBuffer ring_buffer_;
+	uint8_t            *tx_buffer_;
+	size_t              tx_buffer_size_;
+	RingBuffer          ring_buffer_;
+
 	SemaphoreHandle_t tx_binary_;
 	SemaphoreHandle_t mutex_;
+
 	TaskHandle_t task_to_notify_;
+
 	uint8_t *rx_data_;
-	size_t rx_data_size_;
-	bool need_free_;
+	size_t   rx_data_size_;
 
 	// É¾³ý¿½±´¹¹Ôì
 	SerialUART(const SerialUART &) = delete;
