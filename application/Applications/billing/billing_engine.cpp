@@ -2,8 +2,9 @@
 
 #include <string.h>
 #include <time.h>
-#include <algorithm>
+
 #include <log/log>
+#include <custom>
 
 #include "config.hpp"
 
@@ -41,17 +42,17 @@ void BillingEngine::StartSession(const uint8_t *transaction_sn,
 	memset(&current_session_, 0, sizeof(current_session_));
 
 	if (transaction_sn && sn_len > 0) {
-		size_t safe_len = std::min(sn_len, sizeof(current_session_.session_id));
+		size_t safe_len = custom::min(sn_len, sizeof(current_session_.session_id));
 		memcpy(current_session_.session_id, transaction_sn, safe_len);
 	}
 
 	if (logic_card_id && logic_card_id_len > 0) {
-		size_t safe_len = std::min(logic_card_id_len, sizeof(current_session_.logic_card_id));
+		size_t safe_len = custom::min(logic_card_id_len, sizeof(current_session_.logic_card_id));
 		memcpy(current_session_.logic_card_id, logic_card_id, safe_len);
 	}
 
 	if (physic_card_id && physic_card_id_len > 0) {
-		size_t safe_len = std::min(physic_card_id_len, sizeof(current_session_.physic_card_id));
+		size_t safe_len = custom::min(physic_card_id_len, sizeof(current_session_.physic_card_id));
 		memcpy(current_session_.physic_card_id, physic_card_id, safe_len);
 	}
 
@@ -126,7 +127,7 @@ void BillingEngine::UpdateConsumption() {
 	}
 	++current_session_.duration_seconds;
 	current_session_.stop_energy_kwh = meter_->GetEnergy(channel_);
-	current_session_.consumed_energy_kwh = std::abs(current_session_.stop_energy_kwh - current_session_.start_energy_kwh);
+	current_session_.consumed_energy_kwh = custom::abs(current_session_.stop_energy_kwh - current_session_.start_energy_kwh);
 	if (current_session_.consumed_energy_kwh - current_session_.previous_consumed_energy_kwh > 1.0f) {
 		// 电量异常跳变（可能是电表重置），以之前的消耗为准，避免计费金额倒退
 		current_session_.start_energy_kwh = current_session_.stop_energy_kwh - current_session_.previous_consumed_energy_kwh;

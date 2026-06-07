@@ -1,0 +1,4 @@
+Third_Party/
+
+!./Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM3_AC5
+!./Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM3_AC6

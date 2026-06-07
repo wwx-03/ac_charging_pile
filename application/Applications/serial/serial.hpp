@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#include <algorithm>
+#include <utility>
 #include <functional/functional>
 
 class Serial {

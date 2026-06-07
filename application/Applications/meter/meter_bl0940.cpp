@@ -78,7 +78,7 @@ void MeterBL0940::EnqueueMessage(const uint8_t *data, size_t size) {
 }
 
 void MeterBL0940::ParseMessage(const uint8_t *data, uint16_t size) {
-	
+
 	// 检查数据包是否有有效的头部和足够的长度，避免访问越界
 	if (!data || size < sizeof(Packet)) {
 		LOGE("MeterBL0940::ParseMessage: Invalid data or size!\r\n");
@@ -100,10 +100,10 @@ void MeterBL0940::ParseMessage(const uint8_t *data, uint16_t size) {
 		return;
 	}
 
-	uint32_t ia_rms = ptr->ia_rms[0] + (ptr->ia_rms[1] << 8) + (ptr->ia_rms[2] << 16);
-	uint32_t v_rms = ptr->v_rms[0] + (ptr->v_rms[1] << 8) + (ptr->v_rms[2] << 16);
-	uint32_t a_watt = ptr->a_watt[0] + (ptr->a_watt[1] << 8) + (ptr->a_watt[2] << 16);
-	uint32_t cfa = ptr->cfa_cnt[0] + (ptr->cfa_cnt[1] << 8) + (ptr->cfa_cnt[2] << 16);
+	uint32_t ia_rms = ptr->ia_rms[0]  + (ptr->ia_rms[1]  << 8) + (ptr->ia_rms[2]  << 16);
+	uint32_t v_rms  = ptr->v_rms[0]   + (ptr->v_rms[1]   << 8) + (ptr->v_rms[2]   << 16);
+	uint32_t a_watt = ptr->a_watt[0]  + (ptr->a_watt[1]  << 8) + (ptr->a_watt[2]  << 16);
+	uint32_t cfa    = ptr->cfa_cnt[0] + (ptr->cfa_cnt[1] << 8) + (ptr->cfa_cnt[2] << 16);
 	// uint32_t tps1 = ptr->tps1[0] + (ptr->tps1[1] << 8) + (ptr->tps1[2] << 16);
 
 	a_watt = (a_watt & 0x00800000) ? (~a_watt + 1) & 0xFFFFFF : a_watt;
@@ -137,7 +137,7 @@ void MeterBL0940::MainEventLoop() {
 			}
 			continue;
 		}
-		
+
 		ParseMessage(packet.data, packet.size);
 
 		// 每秒读取一次数据，过于频繁可能会导致串口接收缓冲区溢出

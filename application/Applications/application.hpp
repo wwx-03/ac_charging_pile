@@ -20,8 +20,19 @@ public:
 	void Schedule(custom::function<void(void *)> callback, void *args = nullptr);
 
 private:
+	enum Event : uint8_t {
+		SCHEDULE = 0,
+		TIME,
+	};
+
+	struct QueueItem {
+		Event   id;
+		uint8_t data[16];
+	};
+
 	QueueHandle_t event_queue_;
 	TimerHandle_t timer_;
+	uint32_t      seconds_;
 
 	Application();
 	Application(const Application&) = delete;
@@ -29,4 +40,6 @@ private:
 
 	void MainEventLoop();
 	void TimerCallback();
+
+	void ProcessEvent(const QueueItem &item);
 };

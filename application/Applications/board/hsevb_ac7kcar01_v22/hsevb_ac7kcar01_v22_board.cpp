@@ -93,7 +93,7 @@ PwmController *HS7KwhBoard::GetPwmController(size_t channel) {
 	return &pwm;
 }
 
-Rfid *HS7KwhBoard::GetRfid(size_t channel) {
+Rfids *HS7KwhBoard::GetRfids(size_t channel) {
 	return nullptr; // нч RFID
 }
 

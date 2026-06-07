@@ -19,10 +19,12 @@ public:
 	Relay         *GetRelay(size_t channel) override;
 	PwmController *GetPwmController(size_t channel) override;
 	Led           *GetLed(size_t channel) override;
-	Rfid          *GetRfid(size_t channel) override;
+	Rfids         *GetRfids(size_t channel) override;
 	Meter         *GetMeter() override;
 	Network       *GetNetwork() override;
 	Storage       *GetStorage() override;
+
+	ChargerType GetChargerType() const override { return PLUG_AND_CHARGE; }
 
 	// 特有的外设接口
 	Serial *GetSerial(size_t port);

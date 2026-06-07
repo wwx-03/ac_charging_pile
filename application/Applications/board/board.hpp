@@ -10,7 +10,7 @@
 #include "network/network.hpp"
 #include "protocol/protocol.hpp"
 #include "relay/relay.hpp"
-#include "rfid/rfid.hpp"
+#include "rfid/rfids.hpp"
 #include "pwm_controller/pwm_controller.hpp"
 #include "storage/storage.hpp"
 
@@ -39,6 +39,13 @@ void *create_new_board();
 // ============================================================
 class Board {
 public:
+	enum ChargerType : uint8_t {
+		PLUG_AND_CHARGE = 0,  // 即插即充，CP 检测到插枪即开始充电
+		OFFLINE_IC,           // 离线刷卡，需先刷卡授权后才能充电，适用于无网络环境
+		ONLINE_4G_ONLY,       // 在线4G，需远程授权后才能充电
+		IC_AND_4G,            // 刷卡+4G，支持本地刷卡授权和远程授权两种方式
+	};
+
 	static Board &GetInstance() {
 		static Board *instance = static_cast<Board *>(create_new_board());
 		return *instance;
@@ -56,10 +63,12 @@ public:
 	virtual Led           *GetLed(size_t channel) = 0;
 	virtual Relay         *GetRelay(size_t channel) = 0;
 	virtual PwmController *GetPwmController(size_t channel) = 0;
-	virtual Rfid          *GetRfid(size_t channel) = 0;
+	virtual Rfids         *GetRfids(size_t channel) = 0;
 	virtual Meter         *GetMeter() = 0;
 	virtual Network       *GetNetwork() = 0;
 	virtual Storage       *GetStorage() = 0;
+
+	virtual ChargerType GetChargerType() const = 0;
 
 private:
 	Board(const Board &)            = delete;

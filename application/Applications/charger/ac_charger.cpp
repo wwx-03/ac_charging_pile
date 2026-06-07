@@ -6,6 +6,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include <custom>
 #include <log/log>
 #include <time/time>
 
@@ -99,7 +100,7 @@ void AcCharger::Authorize() {
 
 void AcCharger::Authorize(const uint8_t *card_id, size_t len) {
 	ClearAuthorization();
-	size_t copy_len = std::min(len, sizeof(physic_card_id_));
+	size_t copy_len = custom::min(len, sizeof(physic_card_id_));
 	memcpy(physic_card_id_, card_id, copy_len);
 	balance_ = std::numeric_limits<float>::max();  // 刷卡时先假设余额充足，具体金额由计费引擎计算后通知
 	SendEvent(EV_AUTH_SUCCESS);
@@ -113,11 +114,11 @@ void AcCharger::Authorize(const uint8_t *transaction_sn,
                           size_t physic_card_id_len,
                           float balance) {
 	ClearAuthorization();
-	size_t copy_len = std::min(sn_len, sizeof(transaction_sn_));
+	size_t copy_len = custom::min(sn_len, sizeof(transaction_sn_));
 	memcpy(transaction_sn_, transaction_sn, copy_len);
-	copy_len = std::min(logic_card_id_len, sizeof(logic_card_id_));
+	copy_len = custom::min(logic_card_id_len, sizeof(logic_card_id_));
 	memcpy(logic_card_id_, logic_card_id, copy_len);
-	copy_len = std::min(physic_card_id_len, sizeof(physic_card_id_));
+	copy_len = custom::min(physic_card_id_len, sizeof(physic_card_id_));
 	memcpy(physic_card_id_, physic_card_id, copy_len);
 	balance_ = balance;
 	SendEvent(EV_AUTH_SUCCESS);
@@ -213,7 +214,7 @@ Charger::State AcCharger::FindNextState(Event event) const {
 		{WAITING_FOR_CONNECTED, EV_FAULT_OCCURRED, FAULT},
 		{WAITING_FOR_CONNECTED, EV_UNPLUG, IDLE},
 		{WAITING_FOR_CONNECTED, EV_PLUG_IN, STOPPING},
-		{WAITING_FOR_CONNECTED, EV_READY, READY},
+		{WAITING_FOR_CONNECTED, EV_READY, CHARGING},
 
 		// 充电中状态下:
 		{CHARGING, EV_FAULT_OCCURRED, FAULT},

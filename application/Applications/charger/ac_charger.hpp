@@ -1,5 +1,8 @@
 #pragma once
 
+#include <stdint.h>
+#include <string.h>
+
 #include "main.h"
 #include "FreeRTOS.h"
 #include "queue.h"

@@ -38,7 +38,8 @@
             "editor.tabSize": 4,
             "editor.autoIndent": "advanced"
         },
-        "editor.fontSize": 16
+        "editor.fontSize": 16,
+        "workbench.colorTheme": "Dark Modern"
     },
     "extensions": {
         "recommendations": [
